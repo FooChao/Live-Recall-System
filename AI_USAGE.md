@@ -13,6 +13,9 @@ Used by Foo Chao to:
 - Generate and refine browser caption replacement and server revision checks,
   including comments and TODOs for Member 2's history/recall integration.
 - Generate focused JavaScript and Python unit tests for revision behavior.
+- Fix the live-caption area growing as captions arrived and pushing the recall
+  buttons down. Codex added a fixed-height, scrollable caption box, capped at
+  45% of the viewport height, so new captions scroll inside it.
 - Troubleshoot Ubuntu VM shared-folder access and Python virtual-environment
   setup, and update the README with browser startup instructions.
 
