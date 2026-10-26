@@ -18,6 +18,10 @@ Used by Foo Chao to:
   45% of the viewport height, so new captions scroll inside it.
 - Troubleshoot Ubuntu VM shared-folder access and Python virtual-environment
   setup, and update the README with browser startup instructions.
+- Help write the experiment results after Foo Chao ran the experiments and
+  checked the results personally. After judging the results to be correct,
+  Foo Chao asked Codex to double-check the saved JSON summaries against the CSV
+  logs, verify the reported metrics and medians, and help document the findings.
 
 
 ## One useful suggestion
