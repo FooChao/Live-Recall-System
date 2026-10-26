@@ -24,7 +24,13 @@ python solution_server.py --port 8765
 
 ## Browser client
 
-Exact commands/steps.
+Activate the virtual environment, then run:
+
+```bash
+python3 -m http.server 8000 --directory client
+```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in the Ubuntu browser.
 
 ## Public deterministic tests
 
