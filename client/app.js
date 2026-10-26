@@ -26,8 +26,10 @@ const recallEl = document.getElementById("recall");
 // Key: segment number. Value: { caption: latest accepted message, row: its div }.
 // Keeping the row reference lets us update it directly instead of searching the
 // page. Keeping the complete message preserves source_ts for future recall.
-// Time-based retention is a separate TODO: when removing an old entry, remove
-// BOTH its row (entry.row.remove()) and its Map entry (captions.delete(segment)).
+// TODO: MEMBER 2 - Add time-based retention using caption.source_ts. Keep at
+// least the previous 60 s of finalized captions and retain active provisional
+// captions. When expiring an entry, remove BOTH its row (entry.row.remove()) and
+// its Map entry (captions.delete(segment)); also run cleanup while input is idle.
 const captions = new Map();
 
 let ws;
@@ -113,6 +115,9 @@ function connect() {
 for (const button of document.querySelectorAll("button[data-seconds]")) {
   button.addEventListener("click", () => {
     const seconds = Number(button.dataset.seconds);
+    // TODO: MEMBER 2 - Render finalized captions from the last `seconds` using
+    // the local captions Map. Keep 30 s as the default and support 15/30/60 s.
+    // Normal recall uses local state; do not request history on every click.
     recallEl.textContent = `TODO: show finalized captions from the previous ${seconds} seconds using local state.`;
   });
 }

@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """
-CS3103 Assignment 4 - LiveRecall naive working baseline.
+CS3103 Assignment 4 - LiveRecall server with caption revision checks.
 
-This starter is intentionally useful but incomplete. It provides the required
-CLI and a basic WebSocket broadcaster so that caption_source.py -> server ->
-browser/load clients works on day one.
+Provides the required CLI, bounded revision-state checking and a basic WebSocket
+broadcaster for caption_source.py -> server -> browser/load clients.
 
 It DOES NOT implement the graded networking mechanisms:
-  - revision-state management or deduplication
   - recent-history recovery or late-join recovery
   - bounded per-client application queues
   - slow-client isolation
@@ -30,9 +28,16 @@ from typing import Any
 
 import websockets
 
+from caption_state import CaptionRevisionState
+
 # Naive global set of currently connected student clients.
 # There is deliberately no per-client queue or recovery state here.
 CLIENTS: set[Any] = set()
+
+# One tracker for the server's single session, shared across source connections.
+# Keeping it outside handle_source prevents a source reconnect from clearing the
+# accepted revision position and allowing old captions to be broadcast again.
+REVISION_STATE = CaptionRevisionState()
 
 
 async def broadcast_naively(raw_message: str) -> None:
@@ -66,11 +71,24 @@ async def handle_source(ws, hello: dict[str, Any]) -> None:
             except json.JSONDecodeError:
                 continue
 
+            # Valid JSON can also be a list, string or null; only objects can
+            # contain caption fields. Ignore these other values without crashing.
+            if not isinstance(msg, dict):
+                continue
+
             msg_type = msg.get("type")
             if msg_type == "CAPTION_UPDATE":
-                # Baseline behavior: forward exactly what was received.
-                # No history, state, validation, coalescing, or bounded queues.
-                await broadcast_naively(raw)
+                # First accept/save the revision, then broadcast it. Rejected
+                # stale, duplicate, finalized-segment or mismatched-session
+                # updates never reach clients. Forward the original message so
+                # extra source fields remain intact; no valid provisional
+                # revisions are intentionally suppressed in this baseline.
+                if REVISION_STATE.accept(msg, session):
+                    # TODO: MEMBER 2 - Save accepted final=true messages to the
+                    # bounded server history here, before awaiting broadcast.
+                    # Retain enough finalized context for requests up to 60 s
+                    # and expire older items even when no clients are connected.
+                    await broadcast_naively(raw)
             elif msg_type == "SOURCE_DONE":
                 # Test-control message. The specification does not require it
                 # to be forwarded to clients.
@@ -86,9 +104,11 @@ async def handle_source(ws, hello: dict[str, Any]) -> None:
 async def handle_client(ws, hello: dict[str, Any]) -> None:
     client_id = hello.get("client_id")
 
-    # The baseline has no stored recovery state. Sending an empty HISTORY makes
-    # the connection behavior visible and keeps the starter easy to inspect.
-    # Students must implement correct HISTORY semantics for the assignment.
+    # TODO: MEMBER 2 - Replace the empty items with finalized captions selected
+    # from bounded history, using session, history_seconds (up to 60 s), and the
+    # client's last_segment/last_revision. Return oldest first and exclude state
+    # the client already reports holding. Coordinate the history-to-live handoff
+    # with Members 3 and 4 so recovery/late join cannot miss concurrent updates.
     await ws.send(json.dumps({"type": "HISTORY", "items": []}))
 
     CLIENTS.add(ws)
