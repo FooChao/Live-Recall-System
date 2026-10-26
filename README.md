@@ -1,8 +1,10 @@
-# Team XX - LiveRecall
+# Team 13 - LiveRecall
 
 ## Team members
 
 - Name / student ID / responsibility
+- Foo Chao / A0272024R / Live captions, revision replacement, concurrent-client
+  verification, and T1/T2 experiments.
 
 ## Ubuntu setup
 
