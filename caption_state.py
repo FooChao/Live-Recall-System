@@ -13,9 +13,6 @@ class CaptionRevisionState:
     # the next. Consequently, we only need the latest accepted caption: every
     # smaller segment number is already behind our accepted stream position.
     # Memory does not grow with the number of completed segments.
-    # TODO: MEMBER 2 - Add a separate bounded store for finalized recovery
-    # history. latest_caption is replaced on each accepted update, so it cannot
-    # serve as the recent transcript needed for HISTORY responses.
     latest_caption: dict[str, Any] | None = None
 
     def accept(self, msg: dict[str, Any], source_session: str) -> bool:

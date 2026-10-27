@@ -89,7 +89,7 @@ async def handle_source(ws, hello: dict[str, Any]) -> None:
                 # updates never reach clients. Forward the original message so
                 # extra source fields remain intact; no valid provisional
                 # revisions are intentionally suppressed in this baseline.
-                if REVISION_STATE.accept(msg, session):
+                if session is not None and REVISION_STATE.accept(msg, session):
                     # Save accepted final=true messages to the
                     # bounded server history here, before awaiting broadcast.
                     # Retain enough finalized context for requests up to 60 s
