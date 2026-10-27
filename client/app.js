@@ -31,6 +31,7 @@ const recallEl = document.getElementById("recall");
 // captions. When expiring an entry, remove BOTH its row (entry.row.remove()) and
 // its Map entry (captions.delete(segment)); also run cleanup while input is idle.
 const captions = new Map();
+const LOCAL_RETENTION_SECONDS = 70;
 
 let ws;
 
@@ -42,6 +43,38 @@ function numericClientId() {
     sessionStorage.setItem(key, value);
   }
   return Number(value);
+}
+
+function removeExpiredCaptions(nowSeconds = Date.now() / 1000) {
+  const cutoff = nowSeconds - LOCAL_RETENTION_SECONDS;
+
+  for (const [segment, entry] of captions) {
+    if (entry.caption.final && entry.caption.source_ts < cutoff) {
+      entry.row.remove();
+      captions.delete(segment);
+    }
+  }
+}
+
+function renderRecall(seconds = 30) {
+  const nowSeconds = Date.now() / 1000;
+  const cutoff = nowSeconds - seconds;
+
+  removeExpiredCaptions(nowSeconds);
+
+  // Does the regular check if the caption is final and within the requested range
+  // Also sorts from oldest to newest
+  const recentFinals = Array.from(captions.values())
+    .map(entry => entry.caption)
+    .filter(caption =>
+      caption.final &&
+      caption.source_ts >= cutoff
+    )
+    .sort((a, b) => a.segment - b.segment); // a comes first if a - b < 0
+
+  recallEl.textContent = recentFinals.length > 0
+    ? recentFinals.map(caption => caption.text).join("\n")
+    : `No finalized captions available from the last ${seconds} seconds.`;
 }
 
 function applyCaptionUpdate(msg) {
@@ -72,6 +105,7 @@ function applyCaptionUpdate(msg) {
   // textContent displays caption text literally, including any HTML-like text.
   row.textContent = `[${state}] segment ${msg.segment} rev ${msg.revision}: ${msg.text}`;
   captions.set(msg.segment, { caption: msg, row });
+  removeExpiredCaptions(); // Cleanup when there is an update
   // Updating an existing Map key keeps its original insertion position.
   liveEl.scrollTop = liveEl.scrollHeight;
 }
@@ -86,7 +120,10 @@ function connect() {
       type: "CLIENT_HELLO",
       client_id: numericClientId(),
       session: "L1",
-      last_segment: 0,       // TODO: resume latest finalized state
+      // TODO MEMBER 3:
+      // Resume from the latest accepted FINALIZED segment/revision.
+      // Keep this position independently of the expiring captions Map.
+      last_segment: 0,       
       last_revision: 0,
       history_seconds: 30
     }));
@@ -99,6 +136,10 @@ function connect() {
     } else if (msg.type === "HISTORY") {
       console.log(`HISTORY with ${msg.items?.length ?? 0} item(s)`, msg);
       // TODO: merge history without stale/duplicate final captions.
+      // TODO MEMBER 3:
+      // Merge HISTORY items through the shared caption-acceptance logic.
+      // Preserve final captions and reject stale/duplicate revisions.
+      // Insert recovered captions in chronological display order.
     }
   });
 
@@ -115,11 +156,12 @@ function connect() {
 for (const button of document.querySelectorAll("button[data-seconds]")) {
   button.addEventListener("click", () => {
     const seconds = Number(button.dataset.seconds);
-    // TODO: MEMBER 2 - Render finalized captions from the last `seconds` using
+    //Render finalized captions from the last `seconds` using
     // the local captions Map. Keep 30 s as the default and support 15/30/60 s.
     // Normal recall uses local state; do not request history on every click.
-    recallEl.textContent = `TODO: show finalized captions from the previous ${seconds} seconds using local state.`;
+    renderRecall(seconds)
   });
 }
 
+setInterval(removeExpiredCaptions, 1000); // Remove expired captions once per second
 connect();
