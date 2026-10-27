@@ -29,6 +29,7 @@ from typing import Any
 import websockets
 
 from caption_state import CaptionRevisionState
+from history_store import HistoryStore
 
 # Naive global set of currently connected student clients.
 # There is deliberately no per-client queue or recovery state here.
@@ -38,6 +39,11 @@ CLIENTS: set[Any] = set()
 # Keeping it outside handle_source prevents a source reconnect from clearing the
 # accepted revision position and allowing old captions to be broadcast again.
 REVISION_STATE = CaptionRevisionState()
+
+# Shared recent-final history across source connections.
+# Keeping it outside handle_source preserves recovery context when
+# the source disconnects and reconnects.
+HISTORY = HistoryStore()
 
 
 async def broadcast_naively(raw_message: str) -> None:
@@ -84,10 +90,13 @@ async def handle_source(ws, hello: dict[str, Any]) -> None:
                 # extra source fields remain intact; no valid provisional
                 # revisions are intentionally suppressed in this baseline.
                 if REVISION_STATE.accept(msg, session):
-                    # TODO: MEMBER 2 - Save accepted final=true messages to the
+                    # Save accepted final=true messages to the
                     # bounded server history here, before awaiting broadcast.
                     # Retain enough finalized context for requests up to 60 s
                     # and expire older items even when no clients are connected.
+                    if msg["final"]:
+                        HISTORY.can_add_final(msg)
+
                     await broadcast_naively(raw)
             elif msg_type == "SOURCE_DONE":
                 # Test-control message. The specification does not require it
@@ -104,12 +113,23 @@ async def handle_source(ws, hello: dict[str, Any]) -> None:
 async def handle_client(ws, hello: dict[str, Any]) -> None:
     client_id = hello.get("client_id")
 
-    # TODO: MEMBER 2 - Replace the empty items with finalized captions selected
-    # from bounded history, using session, history_seconds (up to 60 s), and the
-    # client's last_segment/last_revision. Return oldest first and exclude state
-    # the client already reports holding. Coordinate the history-to-live handoff
-    # with Members 3 and 4 so recovery/late join cannot miss concurrent updates.
-    await ws.send(json.dumps({"type": "HISTORY", "items": []}))
+    # TODO MEMBER 4:
+    # Make initial HISTORY delivery and live subscription one ordered handover.
+    # Queue HISTORY first, then register the client without an intervening await.
+    # Use one sender per client so live updates cannot overtake HISTORY.
+    # Sending HISTORY before registration currently leaves a missed-update race.
+    # Server gets history from its own history store and sends the requested HISTORY object to the client
+    items = HISTORY.get_history(
+        session=hello["session"],
+        last_segment=hello.get("last_segment", 0),
+        last_revision=hello.get("last_revision", 0),
+        history_seconds=hello.get("history_seconds", 30),
+    )
+
+    await ws.send(json.dumps({
+        "type": "HISTORY",
+        "items": items,
+    }))
 
     CLIENTS.add(ws)
     print(f"client connected: id={client_id}; clients={len(CLIENTS)}", flush=True)
@@ -151,7 +171,6 @@ async def main_async(port: int) -> None:
     ):
         print(f"LiveRecall baseline listening on ws://0.0.0.0:{port}", flush=True)
         await asyncio.Future()
-
 
 def main() -> None:
     parser = argparse.ArgumentParser()
