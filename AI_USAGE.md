@@ -23,6 +23,14 @@ Used by Foo Chao to:
   Foo Chao asked Codex to double-check the saved JSON summaries against the CSV
   logs, verify the reported metrics and medians, and help document the findings.
 
+### ChatGPT
+
+Used by Jun Kiat to:
+
+ - Understand the base code.
+ - Generate parts of code for client side and server side implemention of history
+ - Generate regression tests for history_store
+
 
 ## One useful suggestion
 

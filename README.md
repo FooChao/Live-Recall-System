@@ -98,10 +98,29 @@ Outputs: `t2_run01.csv` / `t2_run01.json` through `t2_run03.csv` /
 `t2_run03.json`, saved beside `run_demo.py`. The runner prints medians across the
 three runs. Results and analysis: [T2 Public scale](EXPERIMENT_RESULTS.md#t2-public-scale).
 
+### T5 Network Impairment
+
+100 clients, 40 seconds per run, 3 independent runs. Uses local loopback with tc/netem applying 120 ms delay, 30 ms jitter and 3% packet loss. No deliberate slow readers, forced disconnects or late clients. Freshness threshold: 500 ms.
+
+```bash
+sudo ./network_profiles/delay_loss.sh lo
+python run_demo.py --clients 100 --duration 40 --runs 3 --output-stem t5
+```
+
+Reset the network afterwards:
+
+```bash
+sudo ./network_profiles/reset.sh lo
+```
+
+Outputs: `t5_run01.csv` / `t5_run01.json` through `t5_run03.csv` /
+`t5_run03.json`, saved beside `run_demo.py`. The runner prints medians across the
+three runs. Results and analysis: [T5 Network Impairment](EXPERIMENT_RESULTS.md#t5-network-impairment).
+
 ### Additional experiments
 
 Add each experiment's configuration, command and output files under its own
-heading. T3-T5 and the required stress-test optimization comparison remain to be
+heading. T3-T4 and the required stress-test optimization comparison remain to be
 completed; commands are in [PUBLIC_TESTS.md](PUBLIC_TESTS.md).
 
 Using the same output stem again overwrites the corresponding result files.
@@ -115,7 +134,12 @@ Exact commands/steps for `caption_source.py`, browser clients, revision replacem
 Briefly describe:
 
 - revision/deduplication state;
-- bounded server history;
+
+### Bounded Server History
+The server keeps recent finalized captions to support reconnect and late-join recovery without retaining the entire lecture. A 70-second retention window provides a buffer beyond the maximum 60-second history request. 
+
+Expired entries are removed when adding captions or querying history. Responses contain recent finals newer than the client’s reported finalized position, ordered oldest first.
+
 - reconnect/late-join recovery;
 - per-client buffering/backpressure policy;
 - overload behavior and trade-offs.

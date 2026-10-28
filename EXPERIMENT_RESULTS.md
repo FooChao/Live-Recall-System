@@ -151,16 +151,67 @@ The broadcast path still waits for all concurrent sends before processing the
 next update. T2 does not establish slow-client isolation, bounded per-client
 buffering or performance above 100 clients; those require further workloads.
 
+## T5 Network Impairment
+
+### Purpose and setup
+
+Evaluate caption correctness and freshness with 100 clients under network delay, jitter and packet loss.
+
+The server and simulated clients ran inside the same Ubuntu VM using local loopback. The supplied delay_loss.sh profile applied 120 ms delay, 30 ms jitter and 3% packet loss to lo. Each experiment used 100 clients, a requested duration of 40 seconds and three independent runs. The freshness threshold was 500 ms. No slow readers, forced disconnects or late joiners were deliberately configured.
+
+### Command
+
+```bash
+sudo ./network_profiles/delay_loss.sh lo
+python run_demo.py --clients 100 --duration 40 --runs 3 --output-stem t5
+```
+
+Reset the network afterwards:
+
+```bash
+sudo ./network_profiles/reset.sh lo
+```
+
+### Results
+
+| Metric | Median across 3 runs |
+|---|---:|
+| P50 Caption Age | 252.27 ms |
+| P95 Caption Age | 662.93 ms |
+| P99 Caption Age | 946.89 ms |
+| Fresh Caption Ratio at 500 ms | 90.66% |
+| Fresh Final Caption Ratio at 500 ms | 91.47% |
+| Final Caption Completeness | 100% |
+| Normal Update Coverage | 99.97% |
+
+Every run recorded 100 successful client connections, zero connection errors, zero duplicates, zero stale updates and zero invalid non-final history items. Every client received all 49 finalized segments, giving 4,900 final-caption deliveries per run.
+
+| Run | P50 ms | P95 ms | P99 ms | Summary | Raw log |
+|---|---:|---:|---:|---|---|
+| 1 | 264.84 | 815.85 | 1167.26 | [JSON](t5_run01.json) | [CSV](t5_run01.csv) |
+| 2 | 250.45 | 624.44 | 937.88 | [JSON](t5_run02.json) | [CSV](t5_run02.csv) |
+| 3 | 252.27 | 662.93 | 946.89 | [JSON](t5_run03.json) | [CSV](t5_run03.csv) |
+
+### Analysis
+
+All three runs achieved complete final-caption delivery without observed duplicate or stale updates, but network impairment reduced freshness.
+
+Comparing with T2, we can see that median caption age values are much higher, reflecting the impact of the network impairment, where caption events will take much longer times to reach the clients. The configured delay increases the baseline time for captions to reach clients, while jitter introduces variation in delivery time. The ratios are also no longer 100%, as many captions arrive past the threshold.
+
+WebSocket uses TCP, so packet loss can trigger retransmissions and delay subsequent data through head-of-line blocking. 
+
+The effects are consistent with the observed latency tail: median P50 Caption Age was 252.27 ms, compared with the substantially higher P95 of 662.93 ms and P99 of 946.89 ms. This means the slower portion of caption deliveries experienced substantially greater delay than typical deliveries.
+
 ## Startup observation
 
 The runner's plain TCP port-readiness probe can produce an opening-handshake
 error because it closes without sending a WebSocket HTTP request. This is
 separate from the simulated clients, which recorded zero connection errors in
-all six runs.
+all nine runs.
 
 ## Remaining report work
 
-- Record T3 slow-reader results, T4 reconnect results and T5 network impairment.
+- Record T3 slow-reader results, T4 reconnect results.
 - Complete a stress-test before/after optimization comparison using the same
   workload. T1 versus T2 does not satisfy this requirement.
 - Record the exact Ubuntu release, Python/websockets versions, VM CPU/RAM and
