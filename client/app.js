@@ -1,23 +1,19 @@
 /*
- * LiveRecall browser client: live captions and revision replacement.
+ * LiveRecall browser client: live captions, local recall, and recovery.
  *
  * Implemented behavior:
- *   - opens a WebSocket
- *   - sends CLIENT_HELLO
+ *   - reconnects automatically and resumes from the latest finalized caption
+ *   - merges recent HISTORY and live updates in segment order
  *   - keeps one caption entry and one displayed row per segment
  *   - replaces a segment's text only when a newer revision is accepted
  *   - ignores stale/duplicate updates and protects finalized captions
  *   - displays whether an update is provisional/final
- *
- * Graded TODOs:
- *   - maintain >=60 s of finalized local state
- *   - implement 30 s default recall + 15/30/60 s views
- *   - automatic reconnect + correct resume state
- *   - HISTORY merge/deduplication
- *   - usable final UI
+ *   - keeps 70 s of finalized local state for 15/30/60 s recall
  */
 
 const WS_URL = "ws://127.0.0.1:8765";
+const SESSION = "L1";
+const RECONNECT_DELAY_MS = 1000;
 const statusEl = document.getElementById("status");
 const liveEl = document.getElementById("live");
 const recallEl = document.getElementById("recall");
@@ -25,15 +21,15 @@ const recallEl = document.getElementById("recall");
 // Caption state for the single L1 session used by this client.
 // Key: segment number. Value: { caption: latest accepted message, row: its div }.
 // Keeping the row reference lets us update it directly instead of searching the
-// page. Keeping the complete message preserves source_ts for future recall.
-// TODO: MEMBER 2 - Add time-based retention using caption.source_ts. Keep at
-// least the previous 60 s of finalized captions and retain active provisional
-// captions. When expiring an entry, remove BOTH its row (entry.row.remove()) and
-// its Map entry (captions.delete(segment)); also run cleanup while input is idle.
+// page. Keeping the complete message preserves source_ts for recall.
 const captions = new Map();
 const LOCAL_RETENTION_SECONDS = 70;
 
 let ws;
+let reconnectTimer = null;
+// Keep the resume position after local caption expiry; provisionals never move it.
+let lastFinalSegment = 0;
+let lastFinalRevision = 0;
 
 function numericClientId() {
   const key = "liverecall-client-id";
@@ -78,6 +74,14 @@ function renderRecall(seconds = 30) {
 }
 
 function applyCaptionUpdate(msg) {
+  if (!msg || msg.type !== "CAPTION_UPDATE" || msg.session !== SESSION ||
+      !Number.isSafeInteger(msg.segment) || msg.segment <= 0 ||
+      !Number.isSafeInteger(msg.revision) || msg.revision <= 0 ||
+      typeof msg.final !== "boolean" || !Number.isFinite(msg.source_ts) ||
+      typeof msg.text !== "string") {
+    return;
+  }
+
   const existing = captions.get(msg.segment);
 
   // A final caption is complete and must never be overwritten. For an active
@@ -93,18 +97,29 @@ function applyCaptionUpdate(msg) {
     // Reuse the SAME div for every accepted revision of this segment.
     row = existing.row;
   } else {
-    // Only the first update for a segment creates a new displayed line.
-    // The supplied source sends segments in order, so new rows can be appended.
+    // Recovered captions can arrive after newer live rows already exist.
     row = document.createElement("div");
     row.id = `segment-${msg.segment}`;
     row.className = "naive-line";
-    liveEl.appendChild(row);
+    let nextEntry;
+    for (const entry of captions.values()) {
+      if (entry.caption.segment > msg.segment &&
+          (!nextEntry || entry.caption.segment < nextEntry.caption.segment)) {
+        nextEntry = entry;
+      }
+    }
+    liveEl.insertBefore(row, nextEntry ? nextEntry.row : null);
   }
 
   const state = msg.final ? "FINAL" : "PROVISIONAL";
   // textContent displays caption text literally, including any HTML-like text.
   row.textContent = `[${state}] segment ${msg.segment} rev ${msg.revision}: ${msg.text}`;
   captions.set(msg.segment, { caption: msg, row });
+  if (msg.final && (msg.segment > lastFinalSegment ||
+      (msg.segment === lastFinalSegment && msg.revision > lastFinalRevision))) {
+    lastFinalSegment = msg.segment;
+    lastFinalRevision = msg.revision;
+  }
   removeExpiredCaptions(); // Cleanup when there is an update
   // Updating an existing Map key keeps its original insertion position.
   liveEl.scrollTop = liveEl.scrollHeight;
@@ -112,44 +127,53 @@ function applyCaptionUpdate(msg) {
 
 function connect() {
   statusEl.textContent = "connecting";
-  ws = new WebSocket(WS_URL);
+  const socket = new WebSocket(WS_URL);
+  ws = socket;
 
-  ws.addEventListener("open", () => {
+  socket.addEventListener("open", () => {
+    if (ws !== socket) return;
     statusEl.textContent = "connected";
-    ws.send(JSON.stringify({
+    socket.send(JSON.stringify({
       type: "CLIENT_HELLO",
       client_id: numericClientId(),
-      session: "L1",
-      // TODO MEMBER 3:
-      // Resume from the latest accepted FINALIZED segment/revision.
-      // Keep this position independently of the expiring captions Map.
-      last_segment: 0,       
-      last_revision: 0,
-      history_seconds: 30
+      session: SESSION,
+      last_segment: lastFinalSegment,
+      last_revision: lastFinalRevision,
+      history_seconds: 60
     }));
   });
 
-  ws.addEventListener("message", (event) => {
-    const msg = JSON.parse(event.data);
+  socket.addEventListener("message", (event) => {
+    if (ws !== socket) return;
+    let msg;
+    try {
+      msg = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    if (!msg || typeof msg !== "object") return;
     if (msg.type === "CAPTION_UPDATE") {
       applyCaptionUpdate(msg);
-    } else if (msg.type === "HISTORY") {
-      console.log(`HISTORY with ${msg.items?.length ?? 0} item(s)`, msg);
-      // TODO: merge history without stale/duplicate final captions.
-      // TODO MEMBER 3:
-      // Merge HISTORY items through the shared caption-acceptance logic.
-      // Preserve final captions and reject stale/duplicate revisions.
-      // Insert recovered captions in chronological display order.
+    } else if (msg.type === "HISTORY" && Array.isArray(msg.items)) {
+      for (const item of msg.items) {
+        if (item && item.final === true) applyCaptionUpdate(item);
+      }
     }
   });
 
-  ws.addEventListener("close", () => {
-    statusEl.textContent = "disconnected";
-    // TODO: automatic reconnect after a short delay, using finalized resume state.
+  socket.addEventListener("close", () => {
+    if (ws !== socket || reconnectTimer !== null) return;
+    statusEl.textContent = "disconnected; retrying in 1 s";
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, RECONNECT_DELAY_MS);
   });
 
-  ws.addEventListener("error", () => {
+  socket.addEventListener("error", () => {
+    if (ws !== socket) return;
     statusEl.textContent = "connection error";
+    // WebSocket errors are followed by close, which schedules the retry.
   });
 }
 
@@ -159,7 +183,7 @@ for (const button of document.querySelectorAll("button[data-seconds]")) {
     //Render finalized captions from the last `seconds` using
     // the local captions Map. Keep 30 s as the default and support 15/30/60 s.
     // Normal recall uses local state; do not request history on every click.
-    renderRecall(seconds)
+    renderRecall(seconds);
   });
 }
 
