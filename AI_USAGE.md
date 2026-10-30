@@ -23,6 +23,15 @@ Used by Foo Chao to:
   Foo Chao asked Codex to double-check the saved JSON summaries against the CSV
   logs, verify the reported metrics and medians, and help document the findings.
 
+Used by Member 3 to:
+
+- Implement automatic browser reconnect, finalized resume tracking independent
+  of caption expiry, and ordered HISTORY merging through shared revision checks.
+- Update the simulated browser test environment with storage, a fixed clock,
+  and controlled timers, and add regression tests for recovery and local recall.
+- Verify the real browser script against a local Python server over WebSockets
+  using a simulated DOM, and document recovery behavior and demo steps.
+
 ### ChatGPT
 
 Used by Jun Kiat to:

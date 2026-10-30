@@ -60,9 +60,11 @@ Requires Node.js. Run separately from the Python tests, from the project folder:
 node --test tests/client_revision.test.cjs
 ```
 
-Checks browser revision replacement, stale/duplicate rejection, and final-caption
-protection using simulated browser objects. No running server or browser is
-needed. Node.js is only needed for these optional tests, not to run the application.
+Checks revision replacement, final-caption protection, automatic reconnect,
+finalized resume after local expiry, ordered history merging, and local recall.
+The tests use simulated browser objects, a fixed clock, and controlled timers;
+no running server or browser is needed. Node.js is only needed for these optional
+tests, not to run the application.
 
 ## Public deterministic tests
 
@@ -127,7 +129,8 @@ Using the same output stem again overwrites the corresponding result files.
 
 ## Mandatory deterministic application demo
 
-Exact commands/steps for `caption_source.py`, browser clients, revision replacement, recall, late join, and reconnect/recovery.
+See [DEMO_GUIDE.md](DEMO_GUIDE.md) for commands and browser steps covering
+revision replacement, recall, late join, and automatic reconnect/recovery.
 
 ## Design notes
 
@@ -140,7 +143,28 @@ The server keeps recent finalized captions to support reconnect and late-join re
 
 Expired entries are removed when adding captions or querying history. Responses contain recent finals newer than the client’s reported finalized position, ordered oldest first.
 
-- reconnect/late-join recovery;
+### Browser reconnect and late join
+
+The browser retries closed WebSockets after one second, including failed
+connection attempts. Each hello requests 60 seconds of available finalized
+history and reports the latest accepted finalized segment/revision. Provisional
+updates never advance this position. The position lives separately from the
+70-second caption Map, so local expiry cannot reset it. Reloading the page starts
+with an empty Map and a fresh `(0, 0)` position; reconnecting within the page keeps
+both local state and the client ID.
+
+Live updates and HISTORY items share revision acceptance: duplicates and stale
+revisions are ignored and a final cannot be overwritten. Recovered rows are
+inserted in segment order, even when newer live rows already exist. The merged
+Map supplies the existing 15/30/60-second local recall views; recall clicks do not
+send history requests. Only finals available within the server's requested
+60-second window can be recovered after a disconnect.
+
+Integration dependency for Member 4: `handle_client()` currently sends HISTORY
+before registering for live broadcasts. An update during that await can be
+missed. The server still needs one ordered HISTORY/live handoff and one sender
+per client; browser merging alone cannot close this gap.
+
 - per-client buffering/backpressure policy;
 - overload behavior and trade-offs.
 
