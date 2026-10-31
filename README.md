@@ -126,7 +126,7 @@ three runs. Results and analysis: [T5 Network Impairment](EXPERIMENT_RESULTS.md#
 ### Additional experiments
 
 Add each experiment's configuration, command and output files under its own
-heading. T4 remains to be completed; commands are in [PUBLIC_TESTS.md](PUBLIC_TESTS.md).
+heading. Commands are also in [PUBLIC_TESTS.md](PUBLIC_TESTS.md).
 
 ### T3 Slow readers
 
@@ -136,7 +136,23 @@ heading. T4 remains to be completed; commands are in [PUBLIC_TESTS.md](PUBLIC_TE
 python run_demo.py --clients 100 --duration 60 --runs 3 --slow-percent 10 --slow-ms 500 --output-stem t3
 ```
 
-Outputs: `t3_run01` to `t3_run03` (`.csv` / `.json`). The naive-broadcaster comparison runs are `t3before_run01` to `t3before_run03`, produced at commit `1532e6a`. Results and analysis: [T3 Slow readers](EXPERIMENT_RESULTS.md#t3-slow-readers).
+Optional memory observation, started in a second terminal during a separate single T3 run (the evaluator matches the server by its command line):
+
+```bash
+python monitor_server.py --match solution_server.py --duration 60 --output t3_memory.csv
+```
+
+Outputs: `t3_run01` to `t3_run03` (`.csv` / `.json`) and `t3_memory.csv`. The naive-broadcaster comparison runs are `t3before_run01` to `t3before_run03`, produced at commit `1532e6a`. Results and analysis: [T3 Slow readers](EXPERIMENT_RESULTS.md#t3-slow-readers).
+
+### T4 Reconnect
+
+100 clients, 60 seconds per run, 3 independent runs, 20% of clients disconnected at 15 s for 5 s. Local loopback, no impairment. Freshness threshold: 500 ms.
+
+```bash
+python run_demo.py --clients 100 --duration 60 --runs 3 --disconnect-percent 20 --disconnect-at 15 --disconnect-seconds 5 --output-stem t4
+```
+
+Outputs: `t4_run01` to `t4_run03` (`.csv` / `.json`). Results and analysis: [T4 Reconnect](EXPERIMENT_RESULTS.md#t4-reconnect).
 
 ### Before/after comparison: 2 Mbit/s bandwidth overload
 
