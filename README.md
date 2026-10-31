@@ -6,6 +6,8 @@
 - Foo Chao / A0272024R / Live captions, revision replacement, concurrent-client
   verification, and T1/T2 experiments.
 - Tang Jun Kiat / A0269580R / What did I miss?, Bounded history, T5 experiment
+- Daniel Zhou / A0291708X / Per-client queues, backpressure and overload policy,
+  T3 and the before/after comparison.
 
 ## Ubuntu setup
 
