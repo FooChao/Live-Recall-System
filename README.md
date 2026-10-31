@@ -49,8 +49,10 @@ python -m unittest discover -s tests -v
 ```
 
 Finds Python tests in `tests/` and shows each result. Checks server revision
-acceptance, stale/duplicate rejection, and final-caption protection without
-starting a server or connecting clients. Successful runs end with `OK`.
+acceptance, stale/duplicate rejection, final-caption protection, bounded history,
+and per-client outbox coalescing and overflow. `test_server_backpressure.py`
+starts an in-process server on a free local port with one stalled and one normal
+client; the other tests need no server. Successful runs end with `OK`.
 
 ### JavaScript
 
@@ -120,8 +122,29 @@ three runs. Results and analysis: [T5 Network Impairment](EXPERIMENT_RESULTS.md#
 ### Additional experiments
 
 Add each experiment's configuration, command and output files under its own
-heading. T3-T4 and the required stress-test optimization comparison remain to be
-completed; commands are in [PUBLIC_TESTS.md](PUBLIC_TESTS.md).
+heading. T4 remains to be completed; commands are in [PUBLIC_TESTS.md](PUBLIC_TESTS.md).
+
+### T3 Slow readers
+
+100 clients, 60 seconds per run, 3 independent runs, 10% slow readers sleeping 500 ms after each message. Local loopback, no impairment. Freshness threshold: 500 ms.
+
+```bash
+python run_demo.py --clients 100 --duration 60 --runs 3 --slow-percent 10 --slow-ms 500 --output-stem t3
+```
+
+Outputs: `t3_run01` to `t3_run03` (`.csv` / `.json`). The naive-broadcaster comparison runs are `t3before_run01` to `t3before_run03`, produced at commit `1532e6a`. Results and analysis: [T3 Slow readers](EXPERIMENT_RESULTS.md#t3-slow-readers).
+
+### Before/after comparison: 2 Mbit/s bandwidth overload
+
+600 clients, 40 seconds per run, 3 independent runs, under the supplied 2 Mbit/s profile. Run once on this server and once on commit `1532e6a` (naive broadcaster) with stem `bw600_before`.
+
+```bash
+sudo ./network_profiles/bandwidth_2mbit.sh lo
+python run_demo.py --clients 600 --duration 40 --runs 3 --output-stem bw600_after
+sudo ./network_profiles/reset.sh lo
+```
+
+Outputs: `bw600_after_run01` to `bw600_after_run03` and `bw600_before_run01` to `bw600_before_run03` (`.csv` / `.json`). Results and analysis: [Before/after comparison](EXPERIMENT_RESULTS.md#beforeafter-comparison-2-mbits-bandwidth-overload).
 
 Using the same output stem again overwrites the corresponding result files.
 
@@ -141,8 +164,19 @@ The server keeps recent finalized captions to support reconnect and late-join re
 Expired entries are removed when adding captions or querying history. Responses contain recent finals newer than the client’s reported finalized position, ordered oldest first.
 
 - reconnect/late-join recovery;
-- per-client buffering/backpressure policy;
-- overload behavior and trade-offs.
+### Per-client buffering and backpressure
+
+Each client has its own outbox (`client_outbox.py`) drained by one sender task (`send_loop()` in `solution_server.py`). The source handler only appends accepted captions to every outbox and never awaits a client socket, so a slow reader delays its own outbox and nothing else. The sender is the only code that writes to the client, which keeps delivery in order.
+
+On `CLIENT_HELLO` the server reads its history, queues the HISTORY message and registers the client with no `await` in between. Every final is therefore either in that HISTORY snapshot or queued live after it: none is missed and none is sent twice, and live updates cannot overtake HISTORY.
+
+### Overload behavior and trade-offs
+
+Coalescing only happens while a message is still waiting in an outbox, which means the client is not keeping up. A client that keeps up receives every revision. When a newer update of a segment is queued, any queued provisional of that segment is dropped, because the server only accepts newer revisions, so the queued one is already obsolete. Finals are never dropped. As a result the outbox holds at most one provisional plus finals.
+
+The outbox is bounded at 32 messages, and its oldest message may wait at most 15 seconds. A client that exceeds either bound is closed with code 1013. Queuing finals forever would let memory and caption age grow without limit. Disconnecting is safe because the client reconnects with its last finalized position, and 15 seconds is well inside the 60-second HISTORY window, so it recovers every final it missed. The cost is a short gap in live updates for that one client.
+
+Bytes that have already left the outbox can no longer be coalesced. The server therefore limits each connection's transport buffer to 4 KiB (`write_limit`) and its kernel send buffer to 16 KiB (`SO_SNDBUF`), so a backlog stays in the outbox instead. The client's own kernel receive buffer is outside the server's control: on public T3 it holds the entire 60-second stream for a 500 ms reader, so the server never sees backpressure there.
 
 ## Optional ASR bonus
 
