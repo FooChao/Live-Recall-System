@@ -104,30 +104,6 @@ Outputs: `t2_run01.csv` / `t2_run01.json` through `t2_run03.csv` /
 `t2_run03.json`, saved beside `run_demo.py`. The runner prints medians across the
 three runs. Results and analysis: [T2 Public scale](EXPERIMENT_RESULTS.md#t2-public-scale).
 
-### T5 Network Impairment
-
-100 clients, 40 seconds per run, 3 independent runs. Uses local loopback with tc/netem applying 120 ms delay, 30 ms jitter and 3% packet loss. No deliberate slow readers, forced disconnects or late clients. Freshness threshold: 500 ms.
-
-```bash
-sudo ./network_profiles/delay_loss.sh lo
-python run_demo.py --clients 100 --duration 40 --runs 3 --output-stem t5
-```
-
-Reset the network afterwards:
-
-```bash
-sudo ./network_profiles/reset.sh lo
-```
-
-Outputs: `t5_run01.csv` / `t5_run01.json` through `t5_run03.csv` /
-`t5_run03.json`, saved beside `run_demo.py`. The runner prints medians across the
-three runs. Results and analysis: [T5 Network Impairment](EXPERIMENT_RESULTS.md#t5-network-impairment).
-
-### Additional experiments
-
-Add each experiment's configuration, command and output files under its own
-heading. Commands are also in [PUBLIC_TESTS.md](PUBLIC_TESTS.md).
-
 ### T3 Slow readers
 
 100 clients, 60 seconds per run, 3 independent runs, 10% slow readers sleeping 500 ms after each message. Local loopback, no impairment. Freshness threshold: 500 ms.
@@ -153,6 +129,25 @@ python run_demo.py --clients 100 --duration 60 --runs 3 --disconnect-percent 20 
 ```
 
 Outputs: `t4_run01` to `t4_run03` (`.csv` / `.json`). Results and analysis: [T4 Reconnect](EXPERIMENT_RESULTS.md#t4-reconnect).
+
+### T5 Network Impairment
+
+100 clients, 40 seconds per run, 3 independent runs. Uses local loopback with tc/netem applying 120 ms delay, 30 ms jitter and 3% packet loss. No deliberate slow readers, forced disconnects or late clients. Freshness threshold: 500 ms.
+
+```bash
+sudo ./network_profiles/delay_loss.sh lo
+python run_demo.py --clients 100 --duration 40 --runs 3 --output-stem t5
+```
+
+Reset the network afterwards:
+
+```bash
+sudo ./network_profiles/reset.sh lo
+```
+
+Outputs: `t5_run01.csv` / `t5_run01.json` through `t5_run03.csv` /
+`t5_run03.json`, saved beside `run_demo.py`. The runner prints medians across the
+three runs. Results and analysis: [T5 Network Impairment](EXPERIMENT_RESULTS.md#t5-network-impairment).
 
 ### Before/after comparison: 2 Mbit/s bandwidth overload
 
