@@ -1,0 +1,2 @@
+# Preserve PDF bytes when checking out the repository on Windows.
+*.pdf binary

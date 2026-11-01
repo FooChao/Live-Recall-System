@@ -22,6 +22,8 @@ Used by Foo Chao to:
   checked the results personally. After judging the results to be correct,
   Foo Chao asked Codex to double-check the saved JSON summaries against the CSV
   logs, verify the reported metrics and medians, and help document the findings.
+- Draft the technical report from the implemented design and recorded experiment
+  results, refine its explanations, and convert the Markdown report to PDF.
 
 Used by Member 3 to:
 
