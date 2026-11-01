@@ -11,7 +11,7 @@ Used by Foo Chao to:
 - Explain WebSocket ordering, JavaScript Map storage, revision replacement,
   and the distinction between revision state and recovery history.
 - Generate and refine browser caption replacement and server revision checks,
-  including comments and TODOs for Member 2's history/recall integration.
+  including comments.
 - Generate focused JavaScript and Python unit tests for revision behavior.
 - Fix the live-caption area growing as captions arrived and pushing the recall
   buttons down. Codex added a fixed-height, scrollable caption box, capped at
