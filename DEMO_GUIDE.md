@@ -56,5 +56,6 @@ to available finals inside that window.
 
 The public T4 command in [PUBLIC_TESTS.md](PUBLIC_TESTS.md) exercises the Python
 load clients and server. Use this browser demo and the JavaScript regression
-tests as well to verify the browser implementation. Member 4 still needs to
-make the server's initial HISTORY/live handoff atomic under concurrent updates.
+tests as well to verify the browser implementation. The server queues initial
+HISTORY and registers the client for live updates without an intervening await,
+then sends both through the same per-client outbox to preserve their order.

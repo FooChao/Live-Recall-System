@@ -11,7 +11,18 @@
 
 ## Ubuntu setup
 
-Exact commands from a fresh Ubuntu environment.
+Use a native Ubuntu installation or a full Ubuntu VM. Install Python and the
+Linux traffic-control tools used by the network experiments:
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip iproute2
+```
+
+Open a terminal in the project folder containing `solution_server.py` and
+`requirements.txt`. Run the commands below from that folder. Run the server and
+simulated clients in the same Ubuntu environment; network profiles apply to
+the loopback interface (`lo`).
 
 ## Install
 
@@ -20,6 +31,9 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
+
+In each additional terminal, enter the project folder and activate the same
+environment with `source venv/bin/activate` before running Python commands.
 
 ## Required server
 
@@ -170,9 +184,20 @@ revision replacement, recall, late join, and automatic reconnect/recovery.
 
 ## Design notes
 
-Briefly describe:
+### Revision and deduplication state
 
-- revision/deduplication state;
+The server's `CaptionRevisionState` stores only the latest accepted caption,
+not a transcript. The supplied source completes each segment before starting
+the next, so the server can reject earlier segments using that one entry.
+For the current segment, it accepts only a higher revision while the stored
+caption is provisional; a final cannot be overwritten. A new segment starts
+its own revision counter. Accepted finals are also saved in the separate
+bounded `HistoryStore` for recovery.
+
+The browser uses a Map keyed by segment number. Each entry holds the latest
+accepted caption and its displayed row. Newer revisions update that same row;
+duplicates, older revisions and changes to finalized captions are ignored.
+Live updates and recovered HISTORY items use the same acceptance function.
 
 ### Bounded Server History
 The server keeps recent finalized captions to support reconnect and late-join recovery without retaining the entire lecture. A 70-second retention window provides a buffer beyond the maximum 60-second history request. 
