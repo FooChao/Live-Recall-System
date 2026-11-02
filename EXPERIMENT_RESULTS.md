@@ -159,59 +159,6 @@ These results support normal operation at the tested population of 100 clients.
 T2 does not exercise slow clients, bounded per-client buffering or overload; see
 T3 and the 2 Mbit/s before/after comparison.
 
-## T5 Network Impairment
-
-### Purpose and setup
-
-Evaluate caption correctness and freshness with 100 clients under network delay, jitter and packet loss.
-
-The server and simulated clients ran on the shared Ubuntu host using local loopback. The supplied delay_loss.sh profile applied 120 ms delay, 30 ms jitter and 3% packet loss to lo. Each experiment used 100 clients, a requested duration of 40 seconds and three independent runs. The freshness threshold was 500 ms. No slow readers, forced disconnects or late joiners were deliberately configured.
-
-### Command
-
-```bash
-sudo ./network_profiles/delay_loss.sh lo
-python run_demo.py --clients 100 --duration 40 --runs 3 --output-stem t5
-```
-
-Reset the network afterwards:
-
-```bash
-sudo ./network_profiles/reset.sh lo
-```
-
-### Results
-
-| Metric | Median across 3 runs |
-|---|---:|
-| P50 Caption Age | 252.55 ms |
-| P95 Caption Age | 632.29 ms |
-| P99 Caption Age | 911.35 ms |
-| Fresh Caption Ratio at 500 ms | 93.39% |
-| Fresh Final Caption Ratio at 500 ms | 90.61% |
-| Final Caption Completeness | 100% |
-| Normal Update Coverage | 97.85% |
-
-Every run recorded 100 successful client connections, zero connection errors, zero duplicates, zero stale updates and zero invalid non-final history items. Every client received all 49 finalized segments, giving 4,900 final-caption deliveries per run.
-
-| Run | P50 ms | P95 ms | P99 ms | Summary | Raw log |
-|---|---:|---:|---:|---|---|
-| 1 | 252.55 | 621.33 | 911.35 | [JSON](t5_run01.json) | [CSV](t5_run01.csv) |
-| 2 | 257.75 | 655.72 | 1122.88 | [JSON](t5_run02.json) | [CSV](t5_run02.csv) |
-| 3 | 250.06 | 632.29 | 910.94 | [JSON](t5_run03.json) | [CSV](t5_run03.csv) |
-
-### Analysis
-
-All three runs achieved complete final-caption delivery without observed duplicate or stale updates, but network impairment reduced freshness.
-
-Comparing with T2, we can see that median caption age values are much higher, reflecting the impact of the network impairment, where caption events will take much longer times to reach the clients. The configured delay increases the baseline time for captions to reach clients, while jitter introduces variation in delivery time. The ratios are also no longer 100%, as many captions arrive past the threshold.
-
-WebSocket uses TCP, so packet loss can trigger retransmissions and delay subsequent data through head-of-line blocking. 
-
-The effects are consistent with the observed latency tail: median P50 Caption Age was 252.55 ms, compared with the substantially higher P95 of 632.29 ms and P99 of 911.35 ms. This means the slower portion of caption deliveries experienced substantially greater delay than typical deliveries.
-
-Normal Update Coverage was below 100% (92.45% to 99.26% across runs) while final completeness stayed at 100%. A retransmission stall stops a client's socket from draining, so its outbox briefly backs up and queued provisionals are replaced by newer revisions or the final. The 1 to 4 recovered history items per run are not reconnects: a few clients finished their handshake under the added delay after the first segment was finalized, so their initial HISTORY was not empty.
-
 ## T3 Slow readers
 
 ### Purpose and setup
@@ -302,6 +249,59 @@ Every reconnecting client recovered all finals it missed: final completeness was
 Fresh Final Caption Ratio is 98.42% rather than 100% because recovered finals are, by definition, older than 500 ms when they arrive. Normal Update Coverage is 98.25% because provisional revisions sent while a client was offline are not recovered; only finals are durable state.
 
 Recovery took 2 to 4 ms at P95 on loopback. The server queues HISTORY and registers the client in one step, so live updates that arrive during recovery are queued behind HISTORY rather than missed.
+
+## T5 Network Impairment
+
+### Purpose and setup
+
+Evaluate caption correctness and freshness with 100 clients under network delay, jitter and packet loss.
+
+The server and simulated clients ran on the shared Ubuntu host using local loopback. The supplied delay_loss.sh profile applied 120 ms delay, 30 ms jitter and 3% packet loss to lo. Each experiment used 100 clients, a requested duration of 40 seconds and three independent runs. The freshness threshold was 500 ms. No slow readers, forced disconnects or late joiners were deliberately configured.
+
+### Command
+
+```bash
+sudo ./network_profiles/delay_loss.sh lo
+python run_demo.py --clients 100 --duration 40 --runs 3 --output-stem t5
+```
+
+Reset the network afterwards:
+
+```bash
+sudo ./network_profiles/reset.sh lo
+```
+
+### Results
+
+| Metric | Median across 3 runs |
+|---|---:|
+| P50 Caption Age | 252.55 ms |
+| P95 Caption Age | 632.29 ms |
+| P99 Caption Age | 911.35 ms |
+| Fresh Caption Ratio at 500 ms | 93.39% |
+| Fresh Final Caption Ratio at 500 ms | 90.61% |
+| Final Caption Completeness | 100% |
+| Normal Update Coverage | 97.85% |
+
+Every run recorded 100 successful client connections, zero connection errors, zero duplicates, zero stale updates and zero invalid non-final history items. Every client received all 49 finalized segments, giving 4,900 final-caption deliveries per run.
+
+| Run | P50 ms | P95 ms | P99 ms | Summary | Raw log |
+|---|---:|---:|---:|---|---|
+| 1 | 252.55 | 621.33 | 911.35 | [JSON](t5_run01.json) | [CSV](t5_run01.csv) |
+| 2 | 257.75 | 655.72 | 1122.88 | [JSON](t5_run02.json) | [CSV](t5_run02.csv) |
+| 3 | 250.06 | 632.29 | 910.94 | [JSON](t5_run03.json) | [CSV](t5_run03.csv) |
+
+### Analysis
+
+All three runs achieved complete final-caption delivery without observed duplicate or stale updates, but network impairment reduced freshness.
+
+Comparing with T2, we can see that median caption age values are much higher, reflecting the impact of the network impairment, where caption events will take much longer times to reach the clients. The configured delay increases the baseline time for captions to reach clients, while jitter introduces variation in delivery time. The ratios are also no longer 100%, as many captions arrive past the threshold.
+
+WebSocket uses TCP, so packet loss can trigger retransmissions and delay subsequent data through head-of-line blocking. 
+
+The effects are consistent with the observed latency tail: median P50 Caption Age was 252.55 ms, compared with the substantially higher P95 of 632.29 ms and P99 of 911.35 ms. This means the slower portion of caption deliveries experienced substantially greater delay than typical deliveries.
+
+Normal Update Coverage was below 100% (92.45% to 99.26% across runs) while final completeness stayed at 100%. A retransmission stall stops a client's socket from draining, so its outbox briefly backs up and queued provisionals are replaced by newer revisions or the final. The 1 to 4 recovered history items per run are not reconnects: a few clients finished their handshake under the added delay after the first segment was finalized, so their initial HISTORY was not empty.
 
 ## Before/after comparison: 2 Mbit/s bandwidth overload
 

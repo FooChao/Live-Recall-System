@@ -50,9 +50,9 @@ final are ignored. Provisional and final captions have explicit labels. A
 fixed-height scrollable live area keeps the recall controls in place. Caption
 text is rendered with `textContent`.
 
-For recall, the browser retains finalized captions for 70 seconds using
-`source_ts`; cleanup runs on updates and once per second while idle. The
-"What did I miss?" button selects the preceding 30 seconds, with 15- and
+For recall, the browser keeps final captions whose `source_ts` fall within 
+the last 70 seconds relative to the current time; cleanup runs on updates and 
+once per second while idle. The "What did I miss?" button selects the preceding 30 seconds, with 15- and
 60-second alternatives. Recall filters locally stored finals and orders them by
 segment; clicking a recall button does not request server history.
 
@@ -267,9 +267,8 @@ scale test.
 ## 7. Limitations and future work
 
 The public tests show complete normal and short-outage final delivery, but not
-complete delivery in every stressed workload. T3's slow clients remained stale,
-and the bandwidth experiment retained significant tail delay. Queue length is
-bounded in messages, not bytes; time-based history size also depends on source
+complete delivery in every stressed workload. The bandwidth experiment retained significant tail delay. 
+Queue length is bounded in messages, not bytes; time-based history size also depends on source
 rate. The revision tracker assumes sequential segments, and simultaneous active
 segments would require different state management. Recovery is limited to
 recent available finals, so a sufficiently long outage or delayed overflow
