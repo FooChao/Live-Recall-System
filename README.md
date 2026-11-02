@@ -6,6 +6,8 @@
 - Foo Chao / A0272024R / Live captions, revision replacement, concurrent-client
   verification, and T1/T2 experiments.
 - Tang Jun Kiat / A0269580R / What did I miss?, Bounded history, T5 experiment
+- Somneel Saha / A0276045A / Browser reconnect, finalized resume tracking,
+  history recovery, and recovery regression tests.
 
 ## Ubuntu setup
 

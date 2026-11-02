@@ -23,7 +23,7 @@ Used by Foo Chao to:
   Foo Chao asked Codex to double-check the saved JSON summaries against the CSV
   logs, verify the reported metrics and medians, and help document the findings.
 
-Used by somneel to:
+Used by Somneel Saha to:
 
 - Implement automatic browser reconnect, finalized resume tracking independent
   of caption expiry, and ordered HISTORY merging through shared revision checks.
