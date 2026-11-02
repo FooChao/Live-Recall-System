@@ -25,7 +25,7 @@ Used by Foo Chao to:
 - Draft the technical report from the implemented design and recorded experiment
   results, refine its explanations, and convert the Markdown report to PDF.
 
-Used by Member 3 to:
+Used by Somneel Saha to:
 
 - Implement automatic browser reconnect, finalized resume tracking independent
   of caption expiry, and ordered HISTORY merging through shared revision checks.
