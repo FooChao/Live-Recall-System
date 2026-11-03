@@ -2,15 +2,13 @@
 """
 CS3103 Assignment 4 - LiveRecall server with caption revision checks.
 
-Provides the required CLI, bounded revision-state checking and a basic WebSocket
-broadcaster for caption_source.py -> server -> browser/load clients.
+Provides the required CLI, bounded revision-state checking, bounded recovery
+history and per-client delivery for caption_source.py -> server -> clients.
 
-It DOES NOT implement the graded networking mechanisms:
-  - recent-history recovery or late-join recovery
-  - bounded per-client application queues
-  - slow-client isolation
-  - semantic coalescing / backpressure
-  - constrained-bandwidth overload handling
+Each client has a bounded outbox drained by its own sender task, so a slow
+reader never stalls the source or other clients. Under backpressure the outbox
+drops obsolete provisional revisions and keeps every final; a client that falls
+too far behind is disconnected and recovers through HISTORY on reconnect.
 
 Required evaluator command:
     python solution_server.py --port 8765
@@ -24,16 +22,24 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import socket
 from typing import Any
 
 import websockets
 
 from caption_state import CaptionRevisionState
+from client_outbox import ClientOutbox, Outgoing
 from history_store import HistoryStore
 
-# Naive global set of currently connected student clients.
-# There is deliberately no per-client queue or recovery state here.
-CLIENTS: set[Any] = set()
+# Connected student clients, each with the messages still waiting to be sent.
+CLIENTS: dict[Any, ClientOutbox] = {}
+
+# Bytes buffered below the outbox can no longer be coalesced, so keep those
+# buffers small: a backed-up client's backlog then waits in its outbox, where
+# obsolete provisionals are dropped. Even a 16 KiB kernel buffer (doubled by
+# Linux) holds over 150 caption messages, far more than in-flight traffic needs.
+CLIENT_SNDBUF_BYTES = 16 * 1024
+WRITE_LIMIT_BYTES = 4 * 1024
 
 # One tracker for the server's single session, shared across source connections.
 # Keeping it outside handle_source prevents a source reconnect from clearing the
@@ -46,24 +52,25 @@ REVISION_STATE = CaptionRevisionState()
 HISTORY = HistoryStore()
 
 
-async def broadcast_naively(raw_message: str) -> None:
-    """Send one message directly to every connected client.
+def broadcast(raw_message: str, msg: dict[str, Any]) -> None:
+    """Queue one accepted caption for every client without awaiting any socket.
 
-    This is intentionally a naive baseline. The source handler waits for all
-    sends to complete. Under pressure, this design may accumulate delay and is
-    not the target architecture for the assignment.
+    Because nothing here awaits, the source handler keeps reading at the
+    source's pace however slowly individual clients drain their outboxes.
     """
-    if not CLIENTS:
-        return
+    for outbox in CLIENTS.values():
+        outbox.put(Outgoing(raw_message, msg["segment"], msg["final"]))
 
-    snapshot = list(CLIENTS)
-    results = await asyncio.gather(
-        *(client.send(raw_message) for client in snapshot),
-        return_exceptions=True,
-    )
-    for client, result in zip(snapshot, results):
-        if isinstance(result, Exception):
-            CLIENTS.discard(client)
+
+async def send_loop(ws, outbox: ClientOutbox, client_id: Any) -> None:
+    """Write one client's outbox to its socket in order; the only awaiting sender."""
+    try:
+        while (item := await outbox.get()) is not None:
+            await ws.send(item.raw)
+    except websockets.ConnectionClosed:
+        return
+    print(f"client overflowed: id={client_id}; closing for HISTORY recovery", flush=True)
+    await ws.close(code=1013, reason="Too far behind; reconnect to resume")
 
 
 async def handle_source(ws, hello: dict[str, Any]) -> None:
@@ -87,17 +94,17 @@ async def handle_source(ws, hello: dict[str, Any]) -> None:
                 # First accept/save the revision, then broadcast it. Rejected
                 # stale, duplicate, finalized-segment or mismatched-session
                 # updates never reach clients. Forward the original message so
-                # extra source fields remain intact; no valid provisional
-                # revisions are intentionally suppressed in this baseline.
+                # extra source fields remain intact. Provisionals are only
+                # suppressed later, per client, by that client's outbox.
                 if session is not None and REVISION_STATE.accept(msg, session):
                     # Save accepted final=true messages to the
-                    # bounded server history here, before awaiting broadcast.
+                    # bounded server history here, before broadcasting.
                     # Retain enough finalized context for requests up to 60 s
                     # and expire older items even when no clients are connected.
                     if msg["final"]:
                         HISTORY.can_add_final(msg)
 
-                    await broadcast_naively(raw)
+                    broadcast(raw, msg)
             elif msg_type == "SOURCE_DONE":
                 # Test-control message. The specification does not require it
                 # to be forwarded to clients.
@@ -113,34 +120,41 @@ async def handle_source(ws, hello: dict[str, Any]) -> None:
 async def handle_client(ws, hello: dict[str, Any]) -> None:
     client_id = hello.get("client_id")
 
-    # TODO MEMBER 4:
-    # Make initial HISTORY delivery and live subscription one ordered handover.
-    # Queue HISTORY first, then register the client without an intervening await.
-    # Use one sender per client so live updates cannot overtake HISTORY.
-    # Sending HISTORY before registration currently leaves a missed-update race.
-    # Server gets history from its own history store and sends the requested HISTORY object to the client
+    # HISTORY is queued and the client registered with no await in between, so
+    # every final is either in this HISTORY snapshot or broadcast to the outbox
+    # afterwards: none can fall into a gap, and live updates cannot overtake it.
     items = HISTORY.get_history(
         session=hello["session"],
         last_segment=hello.get("last_segment", 0),
         last_revision=hello.get("last_revision", 0),
         history_seconds=hello.get("history_seconds", 30),
     )
+    ws.transport.get_extra_info("socket").setsockopt(
+        socket.SOL_SOCKET, socket.SO_SNDBUF, CLIENT_SNDBUF_BYTES
+    )
+    outbox = ClientOutbox()
+    outbox.put(Outgoing(json.dumps({"type": "HISTORY", "items": items}), None, True))
+    CLIENTS[ws] = outbox
+    sender = asyncio.create_task(send_loop(ws, outbox, client_id))
 
-    await ws.send(json.dumps({
-        "type": "HISTORY",
-        "items": items,
-    }))
-
-    CLIENTS.add(ws)
     print(f"client connected: id={client_id}; clients={len(CLIENTS)}", flush=True)
     try:
         # Student clients normally don't send further messages after hello.
         # Keep the WebSocket open until the client disconnects.
         async for _ in ws:
             pass
+    except websockets.ConnectionClosed:
+        # Abnormal closes, including our own 1013 overflow close, still just
+        # mean the client is gone; it recovers through HISTORY on reconnect.
+        pass
     finally:
-        CLIENTS.discard(ws)
-        print(f"client disconnected: id={client_id}; clients={len(CLIENTS)}", flush=True)
+        del CLIENTS[ws]
+        sender.cancel()
+        print(
+            f"client disconnected: id={client_id}; clients={len(CLIENTS)}; "
+            f"coalesced={outbox.coalesced}",
+            flush=True,
+        )
 
 
 async def handler(ws) -> None:
@@ -168,8 +182,9 @@ async def main_async(port: int) -> None:
         max_size=2**20,
         ping_interval=20,
         ping_timeout=20,
+        write_limit=WRITE_LIMIT_BYTES,
     ):
-        print(f"LiveRecall baseline listening on ws://0.0.0.0:{port}", flush=True)
+        print(f"LiveRecall listening on ws://0.0.0.0:{port}", flush=True)
         await asyncio.Future()
 
 def main() -> None:
