@@ -186,6 +186,10 @@ revision replacement, recall, late join, and automatic reconnect/recovery.
 
 ## Design notes
 
+### Architecture
+
+![Starter broadcaster, where one stalled client blocks every client, compared with the final per-client outbox server, where the stall stays with that client](architecture.drawio.png)
+
 ### Revision and deduplication state
 
 The server's `CaptionRevisionState` stores only the latest accepted caption,
