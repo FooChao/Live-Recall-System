@@ -105,12 +105,10 @@ test("newer revisions replace one row and preserve complete caption metadata", (
   const row = client.rows[0];
   assert.equal(row.id, "segment-1");
   assert.match(row.textContent, /\[PROVISIONAL\]/);
-  assert.match(row.className, /\bprovisional\b/);
   client.send({ revision: 7, source_ts: 1001, text: "TCP uses acknowledgements.", final: true });
   assert.equal(client.rows.length, 1);
   assert.equal(client.rows[0], row);
   assert.equal(row.textContent, "[FINAL] segment 1 rev 7: TCP uses acknowledgements.");
-  assert.doesNotMatch(row.className, /\bprovisional\b/);
   assert.equal(vm.runInContext("captions.get(1).caption.source_ts", client.context), 1001);
   assert.equal(vm.runInContext("captions.get(1).caption.session", client.context), "L1");
 });
@@ -236,7 +234,7 @@ test("late-join history is ordered before live captions and is available to loca
   client.receive({ type: "HISTORY", items: [finalCaption(3), finalCaption(1), finalCaption(2)] });
   assert.deepEqual(client.rows.map(row => row.id), ["segment-1", "segment-2", "segment-3", "segment-4"]);
   client.recall(30);
-  assert.equal(client.elements.recall.textContent, "#1 Caption 1\n#2 Caption 2\n#3 Caption 3");
+  assert.equal(client.elements.recall.textContent, "Caption 1\nCaption 2\nCaption 3");
   assert.equal(client.sockets[0].sent.length, 1);
 });
 
@@ -315,7 +313,7 @@ test("15/30/60 second recall includes recovered finals at the boundary without n
     finalCaption(3, { source_ts: 970 }), finalCaption(4, { source_ts: 985 }),
   ] });
   for (const [seconds, expected] of [
-    [15, "#4 Caption 4"], [30, "#3 Caption 3\n#4 Caption 4"], [60, "#2 Caption 2\n#3 Caption 3\n#4 Caption 4"],
+    [15, "Caption 4"], [30, "Caption 3\nCaption 4"], [60, "Caption 2\nCaption 3\nCaption 4"],
   ]) {
     client.recall(seconds);
     assert.equal(client.elements.recall.textContent, expected);

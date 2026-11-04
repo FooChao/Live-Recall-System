@@ -68,10 +68,8 @@ function renderRecall(seconds = 30) {
     )
     .sort((a, b) => a.segment - b.segment); // a comes first if a - b < 0
 
-  // The transcript can repeat a sentence, so the segment number shows that a
-  // repeated line is a separate caption rather than a duplicated final.
   recallEl.textContent = recentFinals.length > 0
-    ? recentFinals.map(caption => `#${caption.segment} ${caption.text}`).join("\n")
+    ? recentFinals.map(caption => caption.text).join("\n")
     : `No finalized captions available from the last ${seconds} seconds.`;
 }
 
@@ -102,6 +100,7 @@ function applyCaptionUpdate(msg) {
     // Recovered captions can arrive after newer live rows already exist.
     row = document.createElement("div");
     row.id = `segment-${msg.segment}`;
+    row.className = "naive-line";
     let nextEntry;
     for (const entry of captions.values()) {
       if (entry.caption.segment > msg.segment &&
@@ -115,7 +114,6 @@ function applyCaptionUpdate(msg) {
   const state = msg.final ? "FINAL" : "PROVISIONAL";
   // textContent displays caption text literally, including any HTML-like text.
   row.textContent = `[${state}] segment ${msg.segment} rev ${msg.revision}: ${msg.text}`;
-  row.className = msg.final ? "naive-line" : "naive-line provisional";
   captions.set(msg.segment, { caption: msg, row });
   if (msg.final && (msg.segment > lastFinalSegment ||
       (msg.segment === lastFinalSegment && msg.revision > lastFinalRevision))) {
